@@ -4495,6 +4495,22 @@ function setup_video_download_button( $tweet, $media_button ) {
         },
         
         open_video = () => {
+            if (typeof extension_functions != 'undefined') {
+                update_video_info().then(
+                    () => {
+                        if (video_url) {
+                            extension_functions.open_multi_tabs([video_url]);
+                            enable_button();
+                        } else {
+                            alert("Video is not loaded yet.");
+                            enable_button();
+                        }
+                    }
+                ).catch((e) => {
+                    alert("Error " + e.toString());
+                });
+                return;
+            }
             if ( video_url ) {
                 w.open( video_url );
                 enable_button();
