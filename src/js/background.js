@@ -283,7 +283,12 @@ function on_message( message, sender, sendResponse ) {
                 result : 'OK', // 暫定的
             } );
             return true;
-        
+        case 'OPEN_BACKGROUND_TABS':
+            let urls = message.image_urls;
+            urls.forEach(url => {
+                chrome.tabs.create({ url: url, active: false });
+            });
+            return true;
         default:
             /*
             //var flag_async = zip_request_handler( message, sender, sendResponse );

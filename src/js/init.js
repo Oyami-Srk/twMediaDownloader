@@ -192,12 +192,18 @@ var extension_functions = ( () => {
             var request_id = '' + new Date().getTime(),
                 window_name_prefix = 'request=tab_sorting&script_name=' + SCRIPT_NAME + '&request_id=' + request_id + '&total=' + urls.length + '&sort_index=';
             
+            /*
             urls.reverse().forEach( ( url, index ) => {
                 var sort_index = urls.length - index,
                     window_name = ( tab_sorting_is_valid ) ? ( window_name_prefix + sort_index ) : '_blank';
                 
                 w.open( url, window_name );
-            } );
+            } ); */
+            chrome.runtime.sendMessage({
+                type: 'OPEN_BACKGROUND_TABS',
+                request_id: request_id,
+                image_urls: urls
+            }, (response) => {});
         }, // end of open_multi_tabs()
         
         request_tab_sorting = () => {
