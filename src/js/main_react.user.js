@@ -4241,6 +4241,12 @@ function setup_image_download_button( $tweet, $media_button ) {
                 enable_button();
                 return;
             }
+
+            image_urls = image_urls.map(url => {
+                let format = url.match("format=(.*?)\\?")[1];
+                let result = url.replace(/\?.*$/, "") + "." + format + "?name=orig";
+                return result;
+            });
             
             if ( typeof extension_functions != 'undefined' ) {
                 extension_functions.open_multi_tabs( image_urls );
