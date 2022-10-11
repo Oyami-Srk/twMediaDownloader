@@ -4531,7 +4531,7 @@ function setup_video_download_button( $tweet, $media_button ) {
             if (typeof extension_functions != 'undefined') {
                 update_video_info().then(
                     () => {
-                        if (video_url) {
+                        if (medias.length > 0) {
                             extension_functions.open_multi_tabs(medias.map((media) => media.url));
                             enable_button();
                         } else {
