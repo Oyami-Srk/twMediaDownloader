@@ -3992,7 +3992,7 @@ function parse_tweet( $tweet ) {
         $own_video_container = ( () => {
             var $own_video_container = $all_video_containers.filter( function () {
                     return $( this ).parents( 'div[role="link"]' ).length < 1;
-                } ).first();
+                } );
             
             if ( /(?:periscope)/i.test( $source_label_container.text() ) ) {
                 // ツイートソースをもとに除外
@@ -4336,7 +4336,7 @@ function setup_image_download_button( $tweet, $media_button ) {
             $event.preventDefault();
             
             tweet_info = parse_tweet( $tweet );
-            
+
             if ( ! image_info_fixed ) {
                 // ボタン挿入時には画像の数が確定していない場合があるため（APIにより確定していない限り）画像情報を取得し直す
                 var image_info_list = [];
@@ -4398,125 +4398,137 @@ function setup_video_download_button( $tweet, $media_button ) {
             }
             
             created_at = api_result.tweet_info.created_at;
+            video_url = [];
+
+            for (let media of api_result.tweet_info.extended_entities.media) {
+                try {
+                    media_prefix = ( media.type == 'animated_gif' ) ? 'gif' : 'vid';
+                }
+                catch ( error ) {
+                }
             
-            try {
-                media_prefix = ( api_result.tweet_info.extended_entities.media[ 0 ].type == 'animated_gif' ) ? 'gif' : 'vid';
-            }
-            catch ( error ) {
-            }
-            
-            try {
-                switch ( media_prefix ) {
-                    case 'gif' : ( () => {
-                        video_url = api_result.tweet_info.extended_entities.media[ 0 ].video_info.variants[ 0 ].url;
-                    } )();
-                    break;
-                    
-                    default : await ( async () => {
-                        var video_info;
-                        
-                        try {
+                try {
+                    switch ( media_prefix ) {
+                        case 'gif' : ( () => {
+                            video_url.push(media.video_info.variants[ 0 ].url);
+                        } )();
+                        break;
+
+                        default : await ( async () => {
+                            var video_info;
+
                             try {
-                                video_info = api_result.tweet_info.extended_entities.media[ 0 ].video_info;
+                                try {
+                                    video_info = media.video_info;
+                                }
+                                catch ( error ) {
+                                    // TODO: Fallback video info for multiple video tweets.
+                                    // [Issue #54: Get video from tweets generated with Twitter for Advertisers tool](https://github.com/furyutei/twMediaDownloader/issues/54#issuecomment-806267490) への対応
+                                    var unified_card_info = JSON.parse( api_result.tweet_info.card.binding_values.unified_card.string_value );
+
+                                    video_info = unified_card_info.media_entities[ unified_card_info.component_objects.media_1.data.id ].video_info;
+                                }
+                                var variants = video_info.variants,
+                                    max_bitrate = -1;
+
+                                var max_bitrate_url;
+                                variants.map( ( variant ) => {
+                                    if ( ( variant.content_type == 'video/mp4' ) && ( variant.bitrate ) && ( max_bitrate < variant.bitrate ) ) {
+                                        max_bitrate_url = variant.url;
+                                        max_bitrate = variant.bitrate;
+                                    }
+                                } );
+                                video_url.push(max_bitrate_url);
                             }
                             catch ( error ) {
-                                // [Issue #54: Get video from tweets generated with Twitter for Advertisers tool](https://github.com/furyutei/twMediaDownloader/issues/54#issuecomment-806267490) への対応
-                                var unified_card_info = JSON.parse( api_result.tweet_info.card.binding_values.unified_card.string_value );
-                                
-                                video_info = unified_card_info.media_entities[ unified_card_info.component_objects.media_1.data.id ].video_info;
-                            }
-                            var variants = video_info.variants,
-                                max_bitrate = -1;
-                            
-                            variants.map( ( variant ) => {
-                                if ( ( variant.content_type == 'video/mp4' ) && ( variant.bitrate ) && ( max_bitrate < variant.bitrate ) ) {
-                                    video_url = variant.url;
-                                    max_bitrate = variant.bitrate;
-                                }
-                            } );
-                        }
-                        catch ( error ) {
-                            // [Issue #54: Get video from tweets generated with Twitter for Advertisers tool](https://github.com/furyutei/twMediaDownloader/issues/54) への対応
-                            try {
-                                var binding_values = api_result.tweet_info.card.binding_values,
-                                    stream_url = ( binding_values.player_stream_url || binding_values.amplify_url_vmap ).string_value;
-                                
-                                if ( /\.mp4(?:\?|$)/.test( stream_url ) ) {
-                                    video_url = stream_url;
-                                    return;
-                                }
-                                
-                                await new Promise( ( resolve, reject ) => {
-                                    $.ajax( {
-                                        type : 'GET',
-                                        url : stream_url,
-                                        dataType: 'xml',
-                                    } )
-                                    .done( ( xml, textStatus, jqXHR ) => {
-                                        var max_bitrate = -1;
-                                        
-                                        $( xml ).find( 'tw\\:videoVariants > tw\\:videoVariant' ).each( function () {
-                                            var $variant = $( this ),
-                                                url = decodeURIComponent( $variant.attr( 'url' ) || '' ),
-                                                content_type = $variant.attr( 'content_type' ),
-                                                bit_rate = parseInt( $variant.attr( 'bit_rate' ), 10 );
-                                            
-                                            if ( ( content_type == 'video/mp4' ) && ( bit_rate ) && ( max_bitrate < bit_rate ) ) {
-                                                video_url = url;
-                                                max_bitrate = bit_rate;
-                                            }
+                                // TODO: Fallback video url for multiple video tweets.
+                                // [Issue #54: Get video from tweets generated with Twitter for Advertisers tool](https://github.com/furyutei/twMediaDownloader/issues/54) への対応
+                                try {
+                                    var binding_values = api_result.tweet_info.card.binding_values,
+                                        stream_url = ( binding_values.player_stream_url || binding_values.amplify_url_vmap ).string_value;
+
+                                    if ( /\.mp4(?:\?|$)/.test( stream_url ) ) {
+                                        video_url.push(stream_url);
+                                        return;
+                                    }
+
+                                    await new Promise( ( resolve, reject ) => {
+                                        $.ajax( {
+                                            type : 'GET',
+                                            url : stream_url,
+                                            dataType: 'xml',
+                                        } )
+                                        .done( ( xml, textStatus, jqXHR ) => {
+                                            var max_bitrate = -1;
+                                            var max_bitrate_url;
+
+                                            $( xml ).find( 'tw\\:videoVariants > tw\\:videoVariant' ).each( function () {
+                                                var $variant = $( this ),
+                                                    url = decodeURIComponent( $variant.attr( 'url' ) || '' ),
+                                                    content_type = $variant.attr( 'content_type' ),
+                                                    bit_rate = parseInt( $variant.attr( 'bit_rate' ), 10 );
+
+                                                if ( ( content_type == 'video/mp4' ) && ( bit_rate ) && ( max_bitrate < bit_rate ) ) {
+                                                    max_bitrate_url = url;
+                                                    max_bitrate = bit_rate;
+                                                }
+                                            } );
+                                            video_url.push(max_bitrate_url);
+                                            resolve();
+                                        } )
+                                        .fail( function ( jqXHR, textStatus, errorThrown ) {
+                                            var error_message = get_jqxhr_error_message( jqXHR );
+
+                                            log_error( tweet_info.tweet_id, textStatus, jqXHR.status + ' ' + jqXHR.statusText, error_message );
+                                            resolve();
+                                        } )
+                                        .always( () => {
                                         } );
-                                        resolve();
-                                    } )
-                                    .fail( function ( jqXHR, textStatus, errorThrown ) {
-                                        var error_message = get_jqxhr_error_message( jqXHR );
-                                        
-                                        log_error( tweet_info.tweet_id, textStatus, jqXHR.status + ' ' + jqXHR.statusText, error_message );
-                                        resolve();
-                                    } )
-                                    .always( () => {
                                     } );
-                                } );
+                                }
+                                catch ( error2 ) {
+                                    log_error( tweet_info.tweet_id, error, error2 );
+                                    // TODO: 外部動画等は未サポート
+                                    log_info( 'response(api_result):', api_result );
+                                }
                             }
-                            catch ( error2 ) {
-                                log_error( tweet_info.tweet_id, error, error2 );
-                                // TODO: 外部動画等は未サポート
-                                log_info( 'response(api_result):', api_result );
-                            }
-                        }
-                    } )();
-                    break;
+                        } )();
+                        break;
+                    }
                 }
-            }
-            catch ( error ) {
-                log_error( 'failed to analyze tweet_info', error );
-                alert( 'Faild to analyze tweet information !' );
+                catch ( error ) {
+                    log_error( 'failed to analyze tweet_info', error );
+                    alert( 'Faild to analyze tweet information !' );
+                }
             }
         },
         
         open_video = () => {
             if ( video_url ) {
-                w.open( video_url );
+                for (let url of video_url) {
+                    w.open( url );
+                }
                 enable_button();
                 return;
             }
             
             var child_window;
             
-            // ポップアップブロック対策
-            if ( IS_FIREFOX ) {
-                child_window = w.open( 'about:blank', '_blank' ); // 空ページを開いておく
-                // TODO: LOADING_IMAGE_URL だと fetch() 後には child_window が DeadObject 化してしまう
-            }
-            else {
-                child_window = w.open( LOADING_IMAGE_URL, '_blank' ); // ダミー画像を開いておく
-            }
-            
             ( async () => {
                 await update_video_info();
                 
                 if ( video_url ) {
-                    child_window.location.replace( video_url );
+                    for (let url of video_url) {
+                        // ポップアップブロック対策
+                        if ( IS_FIREFOX ) {
+                            child_window = w.open( 'about:blank', '_blank' ); // 空ページを開いておく
+                            // TODO: LOADING_IMAGE_URL だと fetch() 後には child_window が DeadObject 化してしまう
+                        }
+                        else {
+                            child_window = w.open( LOADING_IMAGE_URL, '_blank' ); // ダミー画像を開いておく
+                        }
+                        child_window.location.replace( url );
+                    }
                 }
                 else {
                     child_window.close();
@@ -4534,27 +4546,31 @@ function setup_video_download_button( $tweet, $media_button ) {
                 enable_button();
                 return;
             }
+
+            let index = 1;
+            for (let url of video_url) {
+                var fetch_result = await async_fetch_media( url, 'blob' );
             
-            var fetch_result = await async_fetch_media( video_url, 'blob' );
+                if ( fetch_result.error ) {
+                    log_error( 'download failure', url, fetch_result.error, fetch_result.response );
+                    alert( 'Video download failed !' );
+                    enable_button();
+                    return;
+                }
             
-            if ( fetch_result.error ) {
-                log_error( 'download failure', video_url, fetch_result.error, fetch_result.response );
-                alert( 'Video download failed !' );
-                enable_button();
-                return;
+                var timestamp_ms = created_at ? new Date( created_at ).getTime() : tweet_info.timestamp_ms,
+                    date = new Date( parseInt( timestamp_ms, 10 ) ),
+                    timestamp = format_date( date, 'YYYYMMDD_hhmmss' ),
+                    filename = [
+                        tweet_info.screen_name,
+                        tweet_info.tweet_id,
+                        timestamp,
+                        media_prefix + index.toString()
+                    ].join( '-' ) + '.' + get_video_extension( url );
+            
+                download_blob( filename, fetch_result.response );
+                index += 1;
             }
-            
-            var timestamp_ms = created_at ? new Date( created_at ).getTime() : tweet_info.timestamp_ms,
-                date = new Date( parseInt( timestamp_ms, 10 ) ),
-                timestamp = format_date( date, 'YYYYMMDD_hhmmss' ),
-                filename = [
-                    tweet_info.screen_name,
-                    tweet_info.tweet_id,
-                    timestamp,
-                    media_prefix + '1'
-                ].join( '-' ) + '.' + get_video_extension( video_url );
-            
-            download_blob( filename, fetch_result.response );
             enable_button();
         },
         
