@@ -4243,6 +4243,12 @@ function setup_image_download_button( $tweet, $media_button ) {
                 enable_button();
                 return;
             }
+
+            image_urls = image_urls.map(url => {
+                let format = url.match("format=(.*?)\\?")[1];
+                let result = url.replace(/\?.*$/, "") + "." + format + "?name=orig";
+                return result;
+            });
             
             if ( typeof extension_functions != 'undefined' ) {
                 extension_functions.open_multi_tabs( image_urls );
@@ -4522,6 +4528,22 @@ function setup_video_download_button( $tweet, $media_button ) {
         },
         
         open_video = () => {
+            if (typeof extension_functions != 'undefined') {
+                update_video_info().then(
+                    () => {
+                        if (video_url) {
+                            extension_functions.open_multi_tabs(medias.map((media) => media.url));
+                            enable_button();
+                        } else {
+                            alert("Video is not loaded yet.");
+                            enable_button();
+                        }
+                    }
+                ).catch((e) => {
+                    alert("Error " + e.toString());
+                });
+                return;
+            }
             if ( medias.length > 0 ) {
                 for (let media of medias) {
                     w.open( media.url );
