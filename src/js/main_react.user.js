@@ -4432,7 +4432,11 @@ function setup_video_download_button( $tweet, $media_button ) {
                         break;
                         
                         case 'img': ( () => {
-                            medias.push({ url: get_img_url(media.media_url_https, (media.features.orig) ? 'orig' : 'large'), prefix: 'img' });
+                            let url = get_img_url(media.media_url_https, (media.features.orig) ? 'orig' : 'large');
+                            let format = url.match("format=(.*?)\\&")[1];
+                            let result = url.replace(/\?.*$/, "") + "." + format + "?name=orig";
+
+                            medias.push({ url: result, prefix: 'img' });
                         } )();
                         break;
 
