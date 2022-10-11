@@ -4050,6 +4050,8 @@ function parse_tweet( $tweet ) {
             if ( $caret_menu_button.length < 1 ) return false;
             if ( $action_list_container.length < 1 ) return false;
             if ( $tweet_link.length < 1 ) return false;
+            // check if loading for new video player
+            if ($tweet.find('[role="progressbar"]').length > 0) return false;
             return true;
         } )();
     
@@ -4373,9 +4375,8 @@ function setup_video_download_button( $tweet, $media_button ) {
     $media_button.text( OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT );
     
     var clickable = true,
-        video_url = null,
+        medias = [],
         tweet_info = null,
-        media_prefix = 'vid',
         created_at = null,
         
         disable_button = () => {
@@ -4398,11 +4399,21 @@ function setup_video_download_button( $tweet, $media_button ) {
             }
             
             created_at = api_result.tweet_info.created_at;
-            video_url = [];
 
             for (let media of api_result.tweet_info.extended_entities.media) {
+                let media_prefix = '';
                 try {
-                    media_prefix = ( media.type == 'animated_gif' ) ? 'gif' : 'vid';
+                    switch (media.type) {
+                        case 'animated_gif':
+                            media_prefix = 'gif'
+                            break;
+                        case 'video':
+                            media_prefix = 'vid'
+                            break;
+                        case 'photo':
+                            media_prefix = 'img'
+                            break;
+                    }
                 }
                 catch ( error ) {
                 }
@@ -4410,12 +4421,18 @@ function setup_video_download_button( $tweet, $media_button ) {
                 try {
                     switch ( media_prefix ) {
                         case 'gif' : ( () => {
-                            video_url.push(media.video_info.variants[ 0 ].url);
+                            medias.push({ url: media.video_info.variants[0].url, prefix: 'gif' });
+                        } )();
+                        break;
+                        
+                        case 'img': ( () => {
+                            medias.push({ url: get_img_url(media.media_url_https, (media.features.orig) ? 'orig' : 'large'), prefix: 'img' });
                         } )();
                         break;
 
-                        default : await ( async () => {
+                        case 'vid' : await ( async () => {
                             var video_info;
+                            let video_url = '';
 
                             try {
                                 try {
@@ -4438,7 +4455,7 @@ function setup_video_download_button( $tweet, $media_button ) {
                                         max_bitrate = variant.bitrate;
                                     }
                                 } );
-                                video_url.push(max_bitrate_url);
+                                video_url = max_bitrate_url;
                             }
                             catch ( error ) {
                                 // TODO: Fallback video url for multiple video tweets.
@@ -4448,7 +4465,7 @@ function setup_video_download_button( $tweet, $media_button ) {
                                         stream_url = ( binding_values.player_stream_url || binding_values.amplify_url_vmap ).string_value;
 
                                     if ( /\.mp4(?:\?|$)/.test( stream_url ) ) {
-                                        video_url.push(stream_url);
+                                        video_url = stream_url;
                                         return;
                                     }
 
@@ -4473,7 +4490,7 @@ function setup_video_download_button( $tweet, $media_button ) {
                                                     max_bitrate = bit_rate;
                                                 }
                                             } );
-                                            video_url.push(max_bitrate_url);
+                                            video_url = max_bitrate_url;
                                             resolve();
                                         } )
                                         .fail( function ( jqXHR, textStatus, errorThrown ) {
@@ -4492,6 +4509,7 @@ function setup_video_download_button( $tweet, $media_button ) {
                                     log_info( 'response(api_result):', api_result );
                                 }
                             }
+                            medias.push({ url: video_url, prefix: 'vid' });
                         } )();
                         break;
                     }
@@ -4504,9 +4522,9 @@ function setup_video_download_button( $tweet, $media_button ) {
         },
         
         open_video = () => {
-            if ( video_url ) {
-                for (let url of video_url) {
-                    w.open( url );
+            if ( medias.length > 0 ) {
+                for (let media of medias) {
+                    w.open( media.url );
                 }
                 enable_button();
                 return;
@@ -4517,8 +4535,8 @@ function setup_video_download_button( $tweet, $media_button ) {
             ( async () => {
                 await update_video_info();
                 
-                if ( video_url ) {
-                    for (let url of video_url) {
+                if ( medias.length > 0 ) {
+                    for (let media of medias) {
                         // ポップアップブロック対策
                         if ( IS_FIREFOX ) {
                             child_window = w.open( 'about:blank', '_blank' ); // 空ページを開いておく
@@ -4527,32 +4545,29 @@ function setup_video_download_button( $tweet, $media_button ) {
                         else {
                             child_window = w.open( LOADING_IMAGE_URL, '_blank' ); // ダミー画像を開いておく
                         }
-                        child_window.location.replace( url );
+                        child_window.location.replace( media.url );
                     }
-                }
-                else {
-                    child_window.close();
                 }
                 enable_button();
             } )();
         },
         
         download_video = async () => {
-            if ( ! video_url ) {
+            if ( medias.length <= 0 ) {
                 await update_video_info();
             }
             
-            if ( ! video_url ) {
+            if ( medias.length <= 0 ) {
                 enable_button();
                 return;
             }
 
             let index = 1;
-            for (let url of video_url) {
-                var fetch_result = await async_fetch_media( url, 'blob' );
+            for (let media of medias) {
+                var fetch_result = await async_fetch_media( media.url, 'blob' );
             
                 if ( fetch_result.error ) {
-                    log_error( 'download failure', url, fetch_result.error, fetch_result.response );
+                    log_error( 'download failure', media.url, fetch_result.error, fetch_result.response );
                     alert( 'Video download failed !' );
                     enable_button();
                     return;
@@ -4565,8 +4580,8 @@ function setup_video_download_button( $tweet, $media_button ) {
                         tweet_info.screen_name,
                         tweet_info.tweet_id,
                         timestamp,
-                        media_prefix + index.toString()
-                    ].join( '-' ) + '.' + get_video_extension( url );
+                        media.prefix + index.toString()
+                    ].join( '-' ) + '.' + get_video_extension( media.url );
             
                 download_blob( filename, fetch_result.response );
                 index += 1;
@@ -4645,11 +4660,11 @@ function add_media_button_to_tweet( $tweet ) {
     
     var $media_button = $media_button_container.find( 'button:first' ).addClass( 'btn' );
     
-    if ( tweet_info.has.images ) {
-        setup_image_download_button( $tweet, $media_button );
+    if (tweet_info.has.video || tweet_info.has.gif_video) {
+        setup_video_download_button($tweet, $media_button);
     }
     else {
-        setup_video_download_button( $tweet, $media_button );
+        setup_image_download_button( $tweet, $media_button );
     }
     
     var $action_more = $action_list.find( '.ProfileTweet-action--more' );
