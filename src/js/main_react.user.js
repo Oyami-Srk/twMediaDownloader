@@ -673,7 +673,8 @@ function get_video_extension( video_url ) {
         return 'mp4';
     }
     */
-    return video_url.match( /\.([^.?]*)(?:$|\?)/ )[ 1 ];
+    // return video_url.match( /\.([^.?]*)(?:$|\?)/ )[ 1 ];
+    return video_url.match( /\.(jpeg|JPEG|jpg|JPG|png|PNG|mp4|MP4|gif|GIF)(?:$|\?|\..*?$)/ )[ 1 ];
 } // end of get_video_extension()
 
 
