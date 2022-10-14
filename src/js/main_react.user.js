@@ -668,9 +668,11 @@ function is_video_url( url ) {
 
 
 function get_video_extension( video_url ) {
+    /*
     if ( ! is_video_url( video_url ) ) {
         return 'mp4';
     }
+    */
     return video_url.match( /\.([^.?]*)(?:$|\?)/ )[ 1 ];
 } // end of get_video_extension()
 
